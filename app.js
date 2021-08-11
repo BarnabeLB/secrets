@@ -3,7 +3,8 @@ require('dotenv').config();                                                     
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const md5 = require("md5");
+
 
 const app = express();
 
@@ -24,7 +25,7 @@ const userSchema = new mongoose.Schema({
 });
 
 
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });    // Utilisation du plugin encrypt sur notre Schema, on définit la clef de cryptage et le champ à crypter
+
 
 const User = mongoose.model("User", userSchema);
 
@@ -41,10 +42,10 @@ app.get("/register", function (req, res) {
 app.post("/register", function (req, res) {
   const newUser = new User({
     email: req.body.username,
-    password: req.body.password,
+    password: md5(req.body.password),                                                  // on stock dans la database un hash du password entré par l'user
   });
 
-  newUser.save(function (err) {                                                    // L'encryption se fait quand la méthode .save() est appelée
+  newUser.save(function (err) {                                                   
     if (err) {
       console.log(err);
     } else {
@@ -55,15 +56,15 @@ app.post("/register", function (req, res) {
 
 app.post("/login", function (req, res) {
   const username = req.body.username;
-  const password = req.body.password;
+  const password = md5(req.body.password);                                              // on transforme l'input grace à la méthode md5()
 
-  User.findOne({ email: username},function (err, foundUser) {                       // Le décryptage se fait quand la méthode .findOne() est appelée.
+  User.findOne({ email: username},function (err, foundUser) {                      
       if (err) {
         console.log(err);
       } else {
         if (foundUser) {
-          if (foundUser.password === password) {
-            res.render("secrets");
+          if (foundUser.password === password) {                                        // si les hashs correspondent
+            res.render("secrets");                                                      // on donne accès à la page secrète.
           }
         }
       }
