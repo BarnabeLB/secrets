@@ -1,10 +1,13 @@
 //jshint esversion:6
+require('dotenv').config();                                                                  // Doit être mis le plus haut possible dans le fichier
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 const encrypt = require("mongoose-encryption");
 
 const app = express();
+
+
 
 app.use(express.static("public"));
 app.set("view engine", "ejs");
@@ -20,8 +23,8 @@ const userSchema = new mongoose.Schema({
   password: String
 });
 
-const secret = "thisisasecretstring"; 
-userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });    // Utilisation du plugin encrypt sur notre Schema, on définit la clef de cryptage et le champ à crypter
+
+userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] });    // Utilisation du plugin encrypt sur notre Schema, on définit la clef de cryptage et le champ à crypter
 
 const User = mongoose.model("User", userSchema);
 
