@@ -2,6 +2,7 @@
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
+const encrypt = require("mongoose-encryption");
 
 const app = express();
 
@@ -14,10 +15,13 @@ mongoose.connect("mongodb://localhost:27017/userDB", {
   useUnifiedTopology: true,
 });
 
-const userSchema = {
+const userSchema = new mongoose.Schema({
   email: String,
-  password: String,
-};
+  password: String
+});
+
+const secret = "thisisasecretstring"; 
+userSchema.plugin(encrypt, { secret: secret, encryptedFields: ["password"] });    // Utilisation du plugin encrypt sur notre Schema, on définit la clef de cryptage et le champ à crypter
 
 const User = mongoose.model("User", userSchema);
 
@@ -37,7 +41,7 @@ app.post("/register", function (req, res) {
     password: req.body.password,
   });
 
-  newUser.save(function (err) {
+  newUser.save(function (err) {                                                    // L'encryption se fait quand la méthode .save() est appelée
     if (err) {
       console.log(err);
     } else {
@@ -50,9 +54,7 @@ app.post("/login", function (req, res) {
   const username = req.body.username;
   const password = req.body.password;
 
-  User.findOne(
-    { email: username, password: password },
-    function (err, foundUser) {
+  User.findOne({ email: username},function (err, foundUser) {                       // Le décryptage se fait quand la méthode .findOne() est appelée.
       if (err) {
         console.log(err);
       } else {
