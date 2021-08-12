@@ -3,8 +3,11 @@ require('dotenv').config();                                                     
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");                                                           // bcrypt permet un hashage avec des rounds de salt (c'est à dire que le hash se retrouve "salé" un certain nombre de fois de suite)
-const saltRounds = 10;                                                                      // nombre de round de salt
+const session = require("express-session");                                                  // on require express-session, passport et passport-local-mongoose
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
+
+                                                      
 
 
 const app = express();
@@ -15,9 +18,19 @@ app.use(express.static("public"));
 app.set("view engine", "ejs");
 app.use(express.urlencoded({ extended: true }));
 
+app.use(session({                                                                             // on setup le package session, avec les options que l'on désire
+  secret: process.env.SECRET,                                                                 // la clef de cryptage est dans le fichier des variable d'environnement
+  resave: false,
+  saveUninitialized: false
+}));
+
+app.use(passport.initialize());                                                               // initialisation de passport
+app.use(passport.session());                                                                  // et utilisation de passport pour manager notre session
+
 mongoose.connect("mongodb://localhost:27017/userDB", {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  useCreateIndex: true
 });
 
 const userSchema = new mongoose.Schema({
@@ -25,10 +38,16 @@ const userSchema = new mongoose.Schema({
   password: String
 });
 
+userSchema.plugin(passportLocalMongoose);                                                       // ce plugin hash et salt pour nous ce qui sera créée avec userSchema
 
 
 
 const User = mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());                                                            // utilisation de passport local mongoose pour crééer un identifiant local dans Strategy
+
+passport.serializeUser(User.serializeUser());                                                   // et création d'un passport pour sérialiser et désérialiser les users.
+passport.deserializeUser(User.deserializeUser());
 
 app.get("/", function (req, res) {
   res.render("home");
@@ -40,46 +59,52 @@ app.get("/register", function (req, res) {
   res.render("register");
 });
 
+app.get("/secrets", function (req, res) {
+  if (req.isAuthenticated()) {                                                                  // méthode qui check s'il existe un cookie d'authentification pour notre browser, si oui l'accès est donné
+    res.render("secrets");
+  } else {
+    res.redirect("/login");
+  }
+});
+
+app.get("/logout", function (req, res) {
+  req.logout();
+  res.redirect("/");
+});
+
 app.post("/register", function (req, res) {
   
-  bcrypt.hash(req.body.password, saltRounds, function(err, hash) {                      // la méthode .hash() transforme l'input de l'user et retourne un hash avec un certain nombre de round de salt
-    const newUser = new User({
-      email: req.body.username,
-      password: hash,                                                                   // on stock dans la database le hash retourné par la méthode .hash() de bcrypt
-    });
-  
-    newUser.save(function (err) {                                                   
-      if (err) {
+    User.register({username: req.body.username}, req.body.password, function(err, user) {       // .register() s'occupe de crééer un élément de liste User pour nous
+      if(err) {
         console.log(err);
+        res.redirect("/register");
       } else {
-        res.render("secrets");
+        passport.authenticate("local")(req, res, function () {                                  // "local" est la stratégie d'authentification utilisée, c'est la manière qu'authentifier la request. Envoie un cookie qui permet l'authentification sur les pages requierant une authentification.
+          res.redirect("/secrets");
+        })
       }
     });
-  })
+  
   
 });
 
 app.post("/login", function (req, res) {
-  const username = req.body.username;
-  const password = req.body.password;                                             
 
-  User.findOne({ email: username},function (err, foundUser) {                      
-      if (err) {
-        console.log(err);
-      } else {
-        if (foundUser) {
-          bcrypt.compare(password, foundUser.password, function(err, result) {        // la méthode .compare() l'input de l'user et le hash stocké dans la database. La méthode retourne un booléén
-            if (result === true) {                                                    // si, ça valeur est true, c'est que le hash de l'input correspond au hash enregistré
-              res.render("secrets");                                                  // on donne donc accès à la page secrète.
-            } else {
-              console.log(err);
-            }
-          });
-          
-        }
-      }
+  const user = new User({
+    username : req.body.username,
+    password : req.body.password
+  });
+
+  req.login(user, function(err){                                                                  // .login() est une méthode inclue dans passport, elle se place sur le req de app.post()
+    if(err) {
+      console.log(err);
+    } else {
+      passport.authenticate("local")(req, res, function () {                                      // "local" est la stratégie d'authentification utilisée, c'est la manière qu'authentifier la request. Envoie un cookie qui permet l'authentification sur les pages requierant une authentification.
+        res.redirect("/secrets");                                                                     
+      })
     }
-  );
+  });
+ 
 });
 
 app.listen(3000, function () {
