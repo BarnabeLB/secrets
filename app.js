@@ -6,6 +6,8 @@ const mongoose = require("mongoose");
 const session = require("express-session");                                                  // on require express-session, passport et passport-local-mongoose
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');                                       // method évitant d'avoir à chercher dans la db un user et si seulement il n'y est pas le crééer
 
                                                       
 
@@ -35,23 +37,58 @@ mongoose.connect("mongodb://localhost:27017/userDB", {
 
 const userSchema = new mongoose.Schema({
   email: String,
-  password: String
+  password: String,
+  googleId: String
 });
 
 userSchema.plugin(passportLocalMongoose);                                                       // ce plugin hash et salt pour nous ce qui sera créée avec userSchema
-
+userSchema.plugin(findOrCreate);
 
 
 const User = mongoose.model("User", userSchema);
 
-passport.use(User.createStrategy());                                                            // utilisation de passport local mongoose pour crééer un identifiant local dans Strategy
+passport.use(User.createStrategy());                                                            // les strategy sont les différentes façon d'utiliser passport (ces dernières peuvent être "local", "facebook", "google", "instagram")
 
-passport.serializeUser(User.serializeUser());                                                   // et création d'un passport pour sérialiser et désérialiser les users.
-passport.deserializeUser(User.deserializeUser());
+passport.serializeUser(function(user, done) {                                                   // utilisation de passport mongoose pour crééer un identifiant dans Strategy
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(id, done) {                                                   // et création d'un passport pour sérialiser et désérialiser les users.
+  User.findById(id, function(err, user) {
+    done(err, user);
+  });
+});                                                                                                 
+
+
+passport.use(new GoogleStrategy({                                                               // on appelle la stratégy google
+  clientID: process.env.CLIENT_ID,
+  clientSecret: process.env.CLIENT_SECRET,
+  callbackURL: "http://localhost:3000/auth/google/secrets",                                     // url vers laquelle l'user est redirigé une fois authentifier ( doit matcher avec le manager d'api de google)
+  userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"                               // permet d'éviter une erreur dans la transition avec google+
+},
+function(accessToken, refreshToken, profile, cb) {
+  console.log(profile);
+  User.findOrCreate({ googleId: profile.id }, function (err, user) {                           // une fois l'autorisation donné par google, on enregistre la DB le nouvel user
+    return cb(err, user);
+  });
+}
+));
 
 app.get("/", function (req, res) {
   res.render("home");
 });
+
+app.get("/auth/google",
+  passport.authenticate("google", { scope: ["profile"] })                                      // une fois autorisé par google l'accès au profile, google redirect vers /auth/google/secrets
+);
+
+app.get("/auth/google/secrets",                                                                // de cette manière la requête google trouve une page
+  passport.authenticate("google", { failureRedirect: "/login" }), 
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect("/secrets");
+  });
+
 app.get("/login", function (req, res) {
   res.render("login");
 });
