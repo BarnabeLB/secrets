@@ -38,7 +38,8 @@ mongoose.connect("mongodb://localhost:27017/userDB", {
 const userSchema = new mongoose.Schema({
   email: String,
   password: String,
-  googleId: String
+  googleId: String,
+  secret: String
 });
 
 userSchema.plugin(passportLocalMongoose);                                                       // ce plugin hash et salt pour nous ce qui sera créée avec userSchema
@@ -97,11 +98,42 @@ app.get("/register", function (req, res) {
 });
 
 app.get("/secrets", function (req, res) {
+  User.find({"secret": {$ne: null}}, function (err, foundUsers) {                               // rechercher dans la liste User, les champs "secret" qui sont {$ne: null} "not equal to null"
+      if(err) {
+        console.log(err);
+      } else {
+        if(foundUsers) {
+          res.render("secrets", {userWithSecrets: foundUsers});                                 // on affiche la page "secrets" et on envoit à la variable userWithSecrets (présente dans le fichier secrets.ejs la valeur trouvée à l'issu de la recherche dans la DB)
+        }
+      }
+  })                                                            
+});
+
+app.get("/submit", function (req, res) {
   if (req.isAuthenticated()) {                                                                  // méthode qui check s'il existe un cookie d'authentification pour notre browser, si oui l'accès est donné
-    res.render("secrets");
+    res.render("submit");
   } else {
     res.redirect("/login");
   }
+});
+
+app.post("/submit", function(req, res) {
+  const submittedSecret = req.body.secret;
+
+  console.log(req.user.id);
+
+  User.findById(req.user.id, function(err, foundUser) {
+    if(err) {
+      console.log(err);
+    } else {
+      if(foundUser) {
+        foundUser.secret = submittedSecret;
+        foundUser.save(function(){
+          res.redirect("/secrets");
+        });
+      }
+    }
+  });
 });
 
 app.get("/logout", function (req, res) {
